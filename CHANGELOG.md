@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2025-07-05
+
+### Added
+- 🌐 **Tailscale Auto-installation** - Automatically installs Tailscale when not present
+- 🔗 **Secure Networking Setup** - Provides easy access to Tailscale configuration
+
+### Enhanced
+- 🚀 **Setup Process** - Now includes Tailscale installation alongside OpenLiteSpeed verification
+- 📋 **Requirements** - Updated documentation to reflect Tailscale integration
+
 ## [2.1.0] - 2025-07-05
 
 ### Added

@@ -75,7 +75,7 @@ check_root() {
     fi
 }
 
-# Function to check OpenLiteSpeed
+# Function to check OpenLiteSpeed and install Tailscale
 check_openlitespeed() {
     if [[ ! -f "$LSWS_CONF" ]]; then
         print_error "OpenLiteSpeed configuration not found at $LSWS_CONF"
@@ -86,6 +86,19 @@ check_openlitespeed() {
     if ! systemctl is-active --quiet lsws; then
         print_warning "OpenLiteSpeed is not running. Starting it..."
         systemctl start lsws
+    fi
+    
+    # Check and install Tailscale if not present
+    if ! command -v tailscale &> /dev/null; then
+        print_step "Tailscale not found. Installing Tailscale..."
+        if curl -fsSL https://tailscale.com/install.sh | sh; then
+            print_success "Tailscale installed successfully!"
+            print_info "To configure Tailscale, run: sudo tailscale up"
+        else
+            print_warning "Tailscale installation failed, but continuing with virtual host setup"
+        fi
+    else
+        print_info "Tailscale is already installed"
     fi
 }
 

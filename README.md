@@ -20,6 +20,7 @@ A simple, professional command-line tool for managing OpenLiteSpeed virtual host
   - Compression settings
 
 ### Key Improvements  
+- ✅ **Tailscale Auto-install** - Automatically installs Tailscale for secure networking
 - ✅ **SSL Auto-troubleshooting** - Automatically detects and fixes SSL issues
 - ✅ **SSL Listener Auto-config** - Fixes missing SSL certificate configuration
 - ✅ **SSL Health Checks** - Comprehensive SSL verification and diagnostics
@@ -36,8 +37,10 @@ A simple, professional command-line tool for managing OpenLiteSpeed virtual host
 
 - Root/sudo access
 - OpenLiteSpeed installed
-- Internet connection (for SSL certificates)
+- Internet connection (for SSL certificates and Tailscale)
 - `certbot` installed (for SSL)
+
+**Note:** The script will automatically install Tailscale if it's not already present.
 
 ## 🎯 Usage
 
@@ -172,6 +175,11 @@ certbot renew
 
 # Test configuration
 /usr/local/lsws/bin/lshttpd -t
+
+# Tailscale commands (auto-installed by script)
+sudo tailscale up              # Connect to Tailscale network
+sudo tailscale status          # Check Tailscale status
+sudo tailscale ip              # Show Tailscale IP address
 ```
 
 ## 🐛 Troubleshooting
