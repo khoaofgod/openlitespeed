@@ -20,6 +20,7 @@ A simple, professional command-line tool for managing OpenLiteSpeed virtual host
   - Compression settings
 
 ### Key Improvements  
+- ✅ **Development Tools Auto-install** - Automatically installs npm and Claude Code
 - ✅ **Tailscale Auto-install** - Automatically installs Tailscale for secure networking
 - ✅ **SSL Auto-troubleshooting** - Automatically detects and fixes SSL issues
 - ✅ **SSL Listener Auto-config** - Fixes missing SSL certificate configuration
@@ -37,10 +38,13 @@ A simple, professional command-line tool for managing OpenLiteSpeed virtual host
 
 - Root/sudo access
 - OpenLiteSpeed installed
-- Internet connection (for SSL certificates and Tailscale)
+- Internet connection (for SSL certificates, Tailscale, npm, and Claude Code)
 - `certbot` installed (for SSL)
 
-**Note:** The script will automatically install Tailscale if it's not already present.
+**Note:** The script will automatically install these tools if not present:
+- Tailscale (secure networking)
+- Node.js and npm (JavaScript runtime and package manager)
+- Claude Code (AI-powered code assistant)
 
 ## 🎯 Usage
 
@@ -180,6 +184,11 @@ certbot renew
 sudo tailscale up              # Connect to Tailscale network
 sudo tailscale status          # Check Tailscale status
 sudo tailscale ip              # Show Tailscale IP address
+
+# Development tools (auto-installed by script)
+claude-code                    # Launch Claude Code AI assistant
+npm --version                  # Check npm version
+node --version                 # Check Node.js version
 ```
 
 ## 🐛 Troubleshooting

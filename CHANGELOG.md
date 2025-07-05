@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.2] - 2025-07-05
+
+### Added
+- 📦 **npm Auto-installation** - Automatically installs Node.js and npm when not present
+- 🤖 **Claude Code Auto-installation** - Automatically installs @anthropic-ai/claude-code globally
+- 🛠️ **Development Tools Setup** - Complete development environment setup
+
+### Enhanced
+- 🚀 **Setup Process** - Now includes npm and Claude Code installation
+- 📋 **Documentation** - Updated with development tools information
+
 ## [2.1.1] - 2025-07-05
 
 ### Added

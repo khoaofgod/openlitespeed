@@ -75,7 +75,7 @@ check_root() {
     fi
 }
 
-# Function to check OpenLiteSpeed and install Tailscale
+# Function to check OpenLiteSpeed and install required tools
 check_openlitespeed() {
     if [[ ! -f "$LSWS_CONF" ]]; then
         print_error "OpenLiteSpeed configuration not found at $LSWS_CONF"
@@ -99,6 +99,31 @@ check_openlitespeed() {
         fi
     else
         print_info "Tailscale is already installed"
+    fi
+    
+    # Check and install npm if not present
+    if ! command -v npm &> /dev/null; then
+        print_step "npm not found. Installing Node.js and npm..."
+        if curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs; then
+            print_success "Node.js and npm installed successfully!"
+        else
+            print_warning "npm installation failed, but continuing with virtual host setup"
+        fi
+    else
+        print_info "npm is already installed"
+    fi
+    
+    # Check and install Claude Code if not present
+    if ! command -v claude-code &> /dev/null; then
+        print_step "Claude Code not found. Installing Claude Code..."
+        if npm install -g @anthropic-ai/claude-code; then
+            print_success "Claude Code installed successfully!"
+            print_info "To use Claude Code, run: claude-code"
+        else
+            print_warning "Claude Code installation failed, but continuing with virtual host setup"
+        fi
+    else
+        print_info "Claude Code is already installed"
     fi
 }
 
