@@ -19,7 +19,8 @@ A simple, professional command-line tool for managing OpenLiteSpeed virtual host
   - Log rotation
   - Compression settings
 
-### Key Improvements  
+### Key Features
+- ✅ **Database Management CLI** - Complete MySQL/MariaDB user and database management
 - ✅ **Development Tools Auto-install** - Automatically installs npm and Claude Code
 - ✅ **Tailscale Auto-install** - Automatically installs Tailscale for secure networking
 - ✅ **SSL Auto-troubleshooting** - Automatically detects and fixes SSL issues
@@ -50,20 +51,29 @@ A simple, professional command-line tool for managing OpenLiteSpeed virtual host
 
 ### Interactive Virtual Host Setup
 ```bash
-sudo /home/bready/webserver/vhost-add.sh
+sudo ./vhost-add.sh
 ```
 
 ### SSL Troubleshooting Tools
 ```bash
 # Check SSL health for a domain
-sudo /home/bready/webserver/vhost-add.sh --ssl-check domain.com
+sudo ./vhost-add.sh --ssl-check domain.com
 
 # Auto-fix SSL issues for a domain  
-sudo /home/bready/webserver/vhost-add.sh --ssl-fix domain.com
+sudo ./vhost-add.sh --ssl-fix domain.com
 
 # Show help and all options
-sudo /home/bready/webserver/vhost-add.sh --help
+sudo ./vhost-add.sh --help
 ```
+
+### Database Management
+```bash
+# Launch interactive database management
+sudo ./database.sh
+```
+**Features:** User creation, database management, access control, password updates  
+**Supports:** MySQL and MariaDB with automatic external access configuration  
+**Documentation:** See [DATABASE_README.md](DATABASE_README.md) for detailed guide
 
 ## 📖 Workflow
 

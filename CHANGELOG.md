@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2025-07-05
+
+### Added
+- 🗄️ **Database Management CLI** - Complete MySQL/MariaDB management tool (`database.sh`)
+- 👥 **User Management** - Create, search, and manage database users
+- 🔐 **Access Control** - Grant database access with dual host support (@localhost and @%)
+- 🔑 **Password Management** - Update user passwords for both local and external access
+- 📊 **Database Creation** - Create databases with proper charset (utf8mb4)
+- ⚙️ **Auto-Configuration** - Environment file management with connection testing
+- 🎯 **Interactive Interface** - User-friendly menu system with search capabilities
+- 📝 **Comprehensive Documentation** - Detailed DATABASE_README.md guide
+
+### Enhanced
+- 📚 **Documentation** - Updated main README with database management information
+- 🛠️ **Toolchain** - Complete development environment with database management
+
 ## [2.1.2] - 2025-07-05
 
 ### Added
