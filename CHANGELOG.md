@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.1] - 2025-07-06
+
+### Fixed
+- 🔧 **Database Client Detection** - Auto-detects available mysql/mariadb client commands
+- 🐛 **Connection Issues** - Resolves failures when only mysql client is installed
+- 🔄 **Client Compatibility** - Works with both MySQL and MariaDB servers regardless of client
+
+### Added
+- 📋 **Usage Examples** - Comprehensive USAGE_EXAMPLES.md with real-world workflows
+- 🎯 **Step-by-step Guides** - Detailed examples for common database management tasks
+- 🔗 **Integration Examples** - How to use with OpenLiteSpeed vhost management
+- 🛠️ **Troubleshooting Guide** - Solutions for common issues and configuration problems
+
+### Enhanced
+- ✅ **Production Readiness** - Fully tested with remote MariaDB servers
+- 🎨 **User Experience** - Improved error messages and client detection feedback
+
 ## [2.2.0] - 2025-07-05
 
 ### Added

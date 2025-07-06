@@ -73,7 +73,7 @@ sudo ./database.sh
 ```
 **Features:** User creation, database management, access control, password updates  
 **Supports:** MySQL and MariaDB with automatic external access configuration  
-**Documentation:** See [DATABASE_README.md](DATABASE_README.md) for detailed guide
+**Documentation:** See [DATABASE_README.md](DATABASE_README.md) and [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md)
 
 ## 📖 Workflow
 
