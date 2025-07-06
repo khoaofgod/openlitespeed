@@ -199,28 +199,31 @@ load_env_file() {
 test_db_connection() {
     print_step "Testing database connection..."
     
-    local test_result
-    case "$DB_TYPE" in
-        "mysql")
-            mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "SELECT 1;" >/dev/null 2>&1
-            test_result=$?
-            ;;
-        "mariadb")
-            mariadb -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "SELECT 1;" >/dev/null 2>&1
-            test_result=$?
-            ;;
-        *)
-            print_error "Unsupported database type: $DB_TYPE"
-            return 1
-            ;;
-    esac
+    local client=$(get_db_client)
+    if [[ -z "$client" ]]; then
+        print_error "No MySQL/MariaDB client found. Please install mysql-client or mariadb-client."
+        return 1
+    fi
     
-    if [[ $test_result -eq 0 ]]; then
+    if "$client" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "SELECT 1;" >/dev/null 2>&1; then
         print_success "Database connection successful!"
         return 0
     else
         print_error "Database connection failed!"
         print_info "Please check your configuration in $ENV_FILE"
+        print_info "Using client: $client"
+        return 1
+    fi
+}
+
+# Function to get the appropriate client command
+get_db_client() {
+    # Check which client is available
+    if command -v mariadb &> /dev/null; then
+        echo "mariadb"
+    elif command -v mysql &> /dev/null; then
+        echo "mysql"
+    else
         return 1
     fi
 }
@@ -230,22 +233,17 @@ execute_sql() {
     local query="$1"
     local show_output="${2:-false}"
     
-    case "$DB_TYPE" in
-        "mysql")
-            if [[ "$show_output" == "true" ]]; then
-                mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "$query" 2>/dev/null
-            else
-                mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "$query" >/dev/null 2>&1
-            fi
-            ;;
-        "mariadb")
-            if [[ "$show_output" == "true" ]]; then
-                mariadb -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "$query" 2>/dev/null
-            else
-                mariadb -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "$query" >/dev/null 2>&1
-            fi
-            ;;
-    esac
+    local client=$(get_db_client)
+    if [[ -z "$client" ]]; then
+        print_error "No MySQL/MariaDB client found. Please install mysql-client or mariadb-client."
+        return 1
+    fi
+    
+    if [[ "$show_output" == "true" ]]; then
+        "$client" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "$query" 2>/dev/null
+    else
+        "$client" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -e "$query" >/dev/null 2>&1
+    fi
     
     return $?
 }
@@ -254,14 +252,12 @@ execute_sql() {
 get_sql_result() {
     local query="$1"
     
-    case "$DB_TYPE" in
-        "mysql")
-            mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -sN -e "$query" 2>/dev/null
-            ;;
-        "mariadb")
-            mariadb -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -sN -e "$query" 2>/dev/null
-            ;;
-    esac
+    local client=$(get_db_client)
+    if [[ -z "$client" ]]; then
+        return 1
+    fi
+    
+    "$client" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" -sN -e "$query" 2>/dev/null
 }
 
 # Function to list all database users
