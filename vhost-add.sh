@@ -525,19 +525,17 @@ index  {
   autoIndexURI            /_autoindex/
 }
 
-errorlog {
+errorlog $VH_ROOT/logs/error.log {
   useServer               0
-  fileName                $VH_ROOT/logs/error.log
   logLevel                WARN
   rollingSize             10M
   keepDays                30
   compressArchive         1
 }
 
-accesslog {
+accesslog $VH_ROOT/logs/access.log {
   useServer               0
-  fileName                $VH_ROOT/logs/access.log
-  logFormat               "%h %l %u %t \\\"%r\\\" %>s %b \\\"%{Referer}i\\\" \\\"%{User-Agent}i\\\""
+  logFormat               "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\""
   logHeaders              5
   rollingSize             10M
   keepDays                30
