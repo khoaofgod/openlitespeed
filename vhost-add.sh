@@ -474,7 +474,7 @@ add_virtualhost() {
 
 virtualhost $DOMAIN {
   vhRoot                  $VH_ROOT
-  configFile              \$SERVER_ROOT/conf/vhosts/\$VH_NAME/vhconf.conf
+  configFile              \$SERVER_ROOT/conf/vhosts/\$VH_NAME/vhost.conf
   allowSymbolLink         1
   enableScript            1
   restrained              1
@@ -510,7 +510,7 @@ create_vhost_config() {
         abs_doc_root="${DOC_ROOT/\$VH_ROOT/$VH_ROOT}"
     fi
     
-    cat > "$LSWS_VHOST_DIR/$DOMAIN/vhconf.conf" << EOF
+    cat > "$LSWS_VHOST_DIR/$DOMAIN/vhost.conf" << EOF
 docRoot                   $abs_doc_root
 vhDomain                  $DOMAIN
 vhAliases                 www.$DOMAIN
@@ -572,7 +572,7 @@ extprocessor ${USERID} {
   pcKeepAliveTimeout      60
   respBuffer              0
   autoStart               1
-  path                    lsphp83/bin/lsphp
+  path                    /usr/local/lsws/lsphp83/bin/lsphp
   backlog                 100
   instances               1
   extUser                 ${USERID}
@@ -586,33 +586,41 @@ extprocessor ${USERID} {
 }
 
 context /.well-known/acme-challenge {
-  location                $abs_doc_root/.well-known/acme-challenge
+  location                /usr/local/lsws/Example/html/.well-known/acme-challenge
   allowBrowse             1
 
   rewrite  {
-     enable                  0
+    enable                0
   }
+  addDefaultCharset       off
 }
 
 rewrite  {
   enable                  1
   autoLoadHtaccess        1
-  logLevel                0
+}
+
+module cache {
+  storagePath             /usr/local/lsws/cachedata/$DOMAIN
+  ls_enabled              1
 }
 EOF
 
     # Add SSL section if enabled
     if [[ $SSL_ENABLED =~ ^[Yy]$ ]]; then
-        cat >> "$LSWS_VHOST_DIR/$DOMAIN/vhconf.conf" << EOF
+        cat >> "$LSWS_VHOST_DIR/$DOMAIN/vhost.conf" << EOF
 
 vhssl  {
   keyFile                 /etc/letsencrypt/live/$DOMAIN/privkey.pem
   certFile                /etc/letsencrypt/live/$DOMAIN/fullchain.pem
   certChain               1
+  ciphers                 EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH
   enableECDHE             1
   renegProtection         1
   sslSessionCache         1
+  sslSessionTickets       1
   enableSpdy              15
+  enableQuic              1
   enableStapling          1
   ocspRespMaxAge          86400
 }
@@ -620,8 +628,8 @@ EOF
     fi
     
     # Set ownership
-    chown -R lsadm:lsadm "$LSWS_VHOST_DIR/$DOMAIN"
-    chmod 600 "$LSWS_VHOST_DIR/$DOMAIN/vhconf.conf"
+    chown -R lsadm:nogroup "$LSWS_VHOST_DIR/$DOMAIN"
+    chmod 644 "$LSWS_VHOST_DIR/$DOMAIN/vhost.conf"
     
     print_info "Virtual host configuration created"
 }
@@ -976,7 +984,7 @@ setup_ssl() {
         echo "  certbot certonly --webroot -w $abs_doc_root -d $DOMAIN"
         
         # Remove SSL configuration since cert creation failed
-        sed -i '/^vhssl/,/^}/d' "$LSWS_VHOST_DIR/$DOMAIN/vhconf.conf"
+        sed -i '/^vhssl/,/^}/d' "$LSWS_VHOST_DIR/$DOMAIN/vhost.conf"
         
         return 1
     fi
