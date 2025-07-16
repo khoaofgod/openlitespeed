@@ -662,6 +662,42 @@ EOF
     print_info "Virtual host configuration created"
 }
 
+# Function to remove duplicate listener mappings
+remove_duplicate_mappings() {
+    local temp_file="/tmp/lsws_cleanup_$$"
+    
+    print_step "Removing duplicate listener mappings..."
+    
+    # Process each listener section
+    awk '
+    /^listener / { 
+        listener = $2
+        in_listener = 1
+        print $0
+        next
+    }
+    in_listener && /^}/ {
+        # End of listener section - print unique mappings
+        for (map in mappings) {
+            print "  " map
+        }
+        delete mappings
+        in_listener = 0
+        print $0
+        next
+    }
+    in_listener && /^[[:space:]]*map[[:space:]]/ {
+        # Store mapping, overwriting duplicates
+        mappings[$0] = 1
+        next
+    }
+    { print $0 }
+    ' "$LSWS_CONF" > "$temp_file"
+    
+    mv "$temp_file" "$LSWS_CONF"
+    print_info "Duplicate listener mappings removed"
+}
+
 # Function to add domain to listeners
 add_to_listeners() {
     local port="$1"
@@ -713,8 +749,9 @@ add_to_listeners() {
         # Add alias domains to this listener
         if [[ -n "$ALIAS_DOMAINS" ]]; then
             for alias in $ALIAS_DOMAINS; do
-                # Check if alias is already mapped
-                if grep -q "map.*$alias" "$temp_file" && grep -B 10 "map.*$alias" "$temp_file" | grep -q "listener $listener"; then
+                # Check if alias is already mapped to this specific listener
+                local listener_section=$(sed -n "/^listener $listener {/,/^}/p" "$temp_file")
+                if echo "$listener_section" | grep -q "map.*$alias $DOMAIN"; then
                     print_info "Alias domain $alias already mapped to $listener listener"
                 else
                     # Add alias domain mapping to this listener (all alias domains point to main domain vhost)
@@ -977,6 +1014,9 @@ setup_ssl() {
     # Add to HTTPS listeners first
     add_to_listeners "443" "HTTPS"
     
+    # Clean up any duplicate mappings
+    remove_duplicate_mappings
+    
     # Check if certificates already exist and include all domains
     if [[ -f "/etc/letsencrypt/live/$DOMAIN/privkey.pem" ]]; then
         print_info "Existing SSL certificates found for $DOMAIN"
@@ -1010,11 +1050,13 @@ setup_ssl() {
     # Test ACME challenge accessibility for all domains
     print_step "Testing ACME challenge accessibility for all domains..."
     local test_file="acme-test-$(date +%s)"
-    echo "test-challenge-file" > "$acme_challenge_dir/$test_file"
+    echo "test-challenge-file-content" > "$acme_challenge_dir/$test_file"
     
     # Test main domain
-    if ! curl -sS --connect-timeout 5 "http://$DOMAIN/.well-known/acme-challenge/$test_file" > /dev/null 2>&1; then
+    local main_test_result=$(curl -sS --connect-timeout 5 "http://$DOMAIN/.well-known/acme-challenge/$test_file" 2>/dev/null)
+    if [[ "$main_test_result" != "test-challenge-file-content" ]]; then
         print_error "ACME challenge not accessible for $DOMAIN"
+        print_error "Expected: test-challenge-file-content, Got: $main_test_result"
         rm -f "$acme_challenge_dir/$test_file"
         return 1
     fi
@@ -1024,8 +1066,10 @@ setup_ssl() {
     local failed_domains=""
     if [[ -n "$ALIAS_DOMAINS" ]]; then
         for alias in $ALIAS_DOMAINS; do
-            if ! curl -sS --connect-timeout 5 "http://$alias/.well-known/acme-challenge/$test_file" > /dev/null 2>&1; then
+            local alias_test_result=$(curl -sS --connect-timeout 5 "http://$alias/.well-known/acme-challenge/$test_file" 2>/dev/null)
+            if [[ "$alias_test_result" != "test-challenge-file-content" ]]; then
                 print_warning "ACME challenge not accessible for $alias"
+                print_warning "Expected: test-challenge-file-content, Got: $alias_test_result"
                 failed_domains="$failed_domains $alias"
             else
                 print_info "✓ ACME challenge accessible for $alias"
@@ -1339,6 +1383,9 @@ main() {
     
     # Add to HTTP listeners
     add_to_listeners "80" "HTTP"
+    
+    # Clean up any duplicate mappings
+    remove_duplicate_mappings
     
     # Restart OpenLiteSpeed to activate HTTP vhost
     print_step "Restarting OpenLiteSpeed to activate HTTP vhost..."
