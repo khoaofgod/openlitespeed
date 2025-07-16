@@ -369,6 +369,23 @@ select_domain() {
     done
 }
 
+# Function to check if domain should be a separate vhost
+should_be_separate_vhost() {
+    local domain="$1"
+    local main_domain="$2"
+    
+    # Extract base domain (remove www. prefix if present)
+    local base_domain="${domain#www.}"
+    local base_main="${main_domain#www.}"
+    
+    # If base domains are different, it should be a separate vhost
+    if [[ "$base_domain" != "$base_main" ]]; then
+        return 0  # true - should be separate
+    fi
+    
+    return 1  # false - can be alias
+}
+
 # Function to get alias domains
 get_alias_domains() {
     echo
@@ -389,7 +406,33 @@ get_alias_domains() {
     ALIAS_DOMAINS=$(echo "$valid_aliases" | xargs)
     
     if [[ -n "$ALIAS_DOMAINS" ]]; then
-        print_info "Alias domains: $ALIAS_DOMAINS"
+        # Check which domains have different base domains
+        local same_base=""
+        local different_base=""
+        
+        for alias in $ALIAS_DOMAINS; do
+            if should_be_separate_vhost "$alias" "$DOMAIN"; then
+                different_base="$different_base $alias"
+            else
+                same_base="$same_base $alias"
+            fi
+        done
+        
+        same_base=$(echo "$same_base" | xargs)
+        different_base=$(echo "$different_base" | xargs)
+        
+        if [[ -n "$same_base" ]]; then
+            print_info "Alias domains (same base): $same_base"
+        fi
+        
+        if [[ -n "$different_base" ]]; then
+            print_info "Alias domains (different base): $different_base"
+            print_warning "Note: Domains with different base names will use shared ACME challenge directory."
+            print_info "This configuration should work for SSL certificates."
+        fi
+        
+        # Keep all domains in ALIAS_DOMAINS for processing
+        print_info "All alias domains: $ALIAS_DOMAINS"
         
         # Ping all alias domains
         echo
@@ -614,7 +657,7 @@ extprocessor ${USERID} {
 }
 
 context /.well-known/acme-challenge {
-  location                $abs_doc_root/.well-known/acme-challenge
+  location                /usr/local/lsws/Example/html/.well-known/acme-challenge
   allowBrowse             1
   extraHeaders            <<<END_extraHeaders
 X-Forwarded-Host $SERVER_NAME
@@ -1016,6 +1059,59 @@ check_certificate_domains() {
     return 0
 }
 
+# Function to ensure ACME challenge works globally
+ensure_global_acme_challenge() {
+    local domain="$1"
+    local doc_root="$2"
+    
+    print_step "Ensuring global ACME challenge configuration..."
+    
+    # Create a server-level context for ACME challenges if needed
+    # This is a workaround for OpenLiteSpeed's limitation with alias domains
+    
+    # Check if we need to add a global ACME handler
+    local temp_conf="/tmp/lsws_acme_check_$$"
+    
+    # Extract the server-level configuration before first virtualhost
+    awk '/^virtualhost/ {exit} {print}' "$LSWS_CONF" > "$temp_conf"
+    
+    # Check if global ACME context exists
+    if ! grep -q "context /.well-known/acme-challenge" "$temp_conf"; then
+        print_info "Adding global ACME challenge handler..."
+        
+        # Add global context before first virtualhost
+        local insert_line=$(grep -n "^virtualhost " "$LSWS_CONF" | head -1 | cut -d: -f1)
+        if [[ -n "$insert_line" ]]; then
+            # Create temporary file with global ACME context
+            local global_acme="/tmp/global_acme_$$"
+            cat > "$global_acme" << 'EOF'
+
+# Global ACME challenge handler
+context /.well-known/acme-challenge {
+  location                /usr/local/lsws/Example/html/.well-known/acme-challenge
+  allowBrowse             1
+  
+  accessControl  {
+    allow                 *
+  }
+}
+
+EOF
+            
+            # Insert global ACME context
+            head -n $((insert_line - 1)) "$LSWS_CONF" > "${LSWS_CONF}.tmp"
+            cat "$global_acme" >> "${LSWS_CONF}.tmp"
+            tail -n +$insert_line "$LSWS_CONF" >> "${LSWS_CONF}.tmp"
+            mv "${LSWS_CONF}.tmp" "$LSWS_CONF"
+            
+            rm -f "$global_acme"
+            print_info "Global ACME challenge handler added"
+        fi
+    fi
+    
+    rm -f "$temp_conf"
+}
+
 # Function to setup SSL with auto-troubleshooting
 setup_ssl() {
     if [[ ! $SSL_ENABLED =~ ^[Yy]$ ]]; then
@@ -1074,14 +1170,14 @@ setup_ssl() {
     # Test ACME challenge accessibility for all domains
     print_step "Testing ACME challenge accessibility for all domains..."
     local test_file="acme-test-$(date +%s)"
-    echo "test-challenge-file-content" > "$abs_doc_root/.well-known/acme-challenge/$test_file"
+    echo "test-challenge-file-content" > "$acme_challenge_dir/$test_file"
     
     # Test main domain
     local main_test_result=$(curl -sS --connect-timeout 5 "http://$DOMAIN/.well-known/acme-challenge/$test_file" 2>/dev/null)
     if [[ "$main_test_result" != "test-challenge-file-content" ]]; then
         print_error "ACME challenge not accessible for $DOMAIN"
         print_error "Expected: test-challenge-file-content, Got: $main_test_result"
-        rm -f "$abs_doc_root/.well-known/acme-challenge/$test_file"
+        rm -f "$acme_challenge_dir/$test_file"
         return 1
     fi
     print_info "✓ ACME challenge accessible for $DOMAIN"
@@ -1102,7 +1198,7 @@ setup_ssl() {
     fi
     
     # Clean up test file
-    rm -f "$abs_doc_root/.well-known/acme-challenge/$test_file"
+    rm -f "$acme_challenge_dir/$test_file"
     
     # If some domains failed, only create certificate for accessible domains
     if [[ -n "$failed_domains" ]]; then
@@ -1123,8 +1219,9 @@ setup_ssl() {
     # Create certificate
     print_step "Creating Let's Encrypt certificate..."
     
-    # Build certbot command with accessible domains only
-    local certbot_cmd="$CERTBOT_PATH certonly --webroot -w \"$abs_doc_root\" -d \"$DOMAIN\""
+    # Build certbot command using the shared Example directory for all domains
+    # This ensures ACME challenges work for all alias domains
+    local certbot_cmd="$CERTBOT_PATH certonly --webroot -w \"/usr/local/lsws/Example/html\" -d \"$DOMAIN\""
     
     # Add accessible alias domains to certificate
     if [[ -n "$ALIAS_DOMAINS" ]]; then
@@ -1198,7 +1295,7 @@ setup_ssl() {
         print_info "  • Let's Encrypt rate limits reached"
         print_info ""
         print_info "You can retry manually with:"
-        local retry_cmd="certbot certonly --webroot -w $abs_doc_root -d $DOMAIN"
+        local retry_cmd="certbot certonly --webroot -w /usr/local/lsws/Example/html -d $DOMAIN"
         if [[ -n "$ALIAS_DOMAINS" ]]; then
             for alias in $ALIAS_DOMAINS; do
                 retry_cmd="$retry_cmd -d $alias"
@@ -1336,12 +1433,7 @@ show_summary() {
     echo "  2. Test your website: http://$DOMAIN"
     if [[ $SSL_ENABLED =~ ^[Yy]$ ]] && [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
         echo "  3. To retry SSL later, run:"
-        # Get absolute document root for retry command
-        local abs_doc_root_retry="$DOC_ROOT"
-        if [[ "$DOC_ROOT" == *"\$VH_ROOT"* ]]; then
-            abs_doc_root_retry="${DOC_ROOT/\$VH_ROOT/$VH_ROOT}"
-        fi
-        local summary_retry_cmd="certbot certonly --webroot -w $abs_doc_root_retry -d $DOMAIN"
+        local summary_retry_cmd="certbot certonly --webroot -w /usr/local/lsws/Example/html -d $DOMAIN"
         if [[ -n "$ALIAS_DOMAINS" ]]; then
             for alias in $ALIAS_DOMAINS; do
                 summary_retry_cmd="$summary_retry_cmd -d $alias"
