@@ -1023,7 +1023,7 @@ setup_ssl() {
         print_info "Creating certificate for: $DOMAIN"
     fi
     
-    certbot_cmd="$certbot_cmd --email \"$ADMIN_EMAIL\" --agree-tos --non-interactive"
+    certbot_cmd="$certbot_cmd --email \"$ADMIN_EMAIL\" --agree-tos --non-interactive --expand"
     
     if eval "$certbot_cmd"; then
         
@@ -1074,7 +1074,7 @@ setup_ssl() {
                 retry_cmd="$retry_cmd -d $alias"
             done
         fi
-        echo "  $retry_cmd"
+        echo "  $retry_cmd --expand"
         
         # Remove SSL configuration since cert creation failed
         sed -i '/^vhssl/,/^}/d' "$LSWS_VHOST_DIR/$DOMAIN/vhost.conf"
@@ -1212,7 +1212,7 @@ show_summary() {
                 summary_retry_cmd="$summary_retry_cmd -d $alias"
             done
         fi
-        echo "     $summary_retry_cmd"
+        echo "     $summary_retry_cmd --expand"
     fi
     echo
     echo "Useful Commands:"
