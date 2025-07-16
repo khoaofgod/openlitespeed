@@ -114,11 +114,11 @@ check_openlitespeed() {
     fi
     
     # Check and install Claude Code if not present
-    if ! command -v claude-code &> /dev/null; then
+    if ! command -v claude &> /dev/null; then
         print_step "Claude Code not found. Installing Claude Code..."
         if npm install -g @anthropic-ai/claude-code; then
             print_success "Claude Code installed successfully!"
-            print_info "To use Claude Code, run: claude-code"
+            print_info "To use Claude Code, run: claude"
         else
             print_warning "Claude Code installation failed, but continuing with virtual host setup"
         fi
@@ -389,22 +389,22 @@ get_admin_email() {
 # Function to setup directories
 setup_directories() {
     echo
-    read -p "Document Root (default: \$VH_ROOT/public): " DOC_ROOT
-    DOC_ROOT=${DOC_ROOT:-"\$VH_ROOT/public"}
+    read -p "Document Root (default: \$VH_ROOT/app/public): " DOC_ROOT
+    DOC_ROOT=${DOC_ROOT:-"\$VH_ROOT/app/public"}
     
     read -p "Virtual Host Root (default: /home/$DOMAIN): " VH_ROOT
     VH_ROOT=${VH_ROOT:-"/home/$DOMAIN"}
     
     # Create directories
     print_step "Creating directory structure..."
-    mkdir -p "$VH_ROOT"/{public,logs,tmp,backup}
+    mkdir -p "$VH_ROOT"/{app/public,logs,tmp,backup}
     
     # Set ownership
     chown -R "$USERID:$USERID" "$VH_ROOT"
     chmod 755 "$VH_ROOT"
     
     # Create index.html
-    cat > "$VH_ROOT/public/index.html" << EOF
+    cat > "$VH_ROOT/app/public/index.html" << EOF
 <!DOCTYPE html>
 <html>
 <head>
@@ -423,7 +423,7 @@ setup_directories() {
 </html>
 EOF
     
-    chown "$USERID:$USERID" "$VH_ROOT/public/index.html"
+    chown "$USERID:$USERID" "$VH_ROOT/app/public/index.html"
     print_info "Directory structure created"
 }
 
@@ -584,7 +584,7 @@ extprocessor ${USERID} {
 }
 
 context /.well-known/acme-challenge {
-  location                /usr/local/lsws/Example/html/.well-known/acme-challenge
+  location                $abs_doc_root/.well-known/acme-challenge
   allowBrowse             1
 
   rewrite  {
@@ -1106,11 +1106,11 @@ show_summary() {
     echo "└─────────────────────────────────────────────────────────────┘"
     echo
     echo "Next Steps:"
-    echo "  1. Upload your website files to: $VH_ROOT/public/"
+    echo "  1. Upload your website files to: $VH_ROOT/app/public/"
     echo "  2. Test your website: http://$DOMAIN"
     if [[ $SSL_ENABLED =~ ^[Yy]$ ]] && [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
         echo "  3. To retry SSL later, run:"
-        echo "     certbot certonly --webroot -w $VH_ROOT/public -d $DOMAIN"
+        echo "     certbot certonly --webroot -w $VH_ROOT/app/public -d $DOMAIN"
     fi
     echo
     echo "Useful Commands:"

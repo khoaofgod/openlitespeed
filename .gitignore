@@ -1,19 +1,35 @@
-# Backup files
+# Ignore everything by default
+*
+
+# Allow .md files
+!*.md
+
+# Allow .sh files
+!*.sh
+
+# Allow .gitignore itself
+!.gitignore
+
+# Allow LICENSE file
+!LICENSE
+
+# Always ignore backup directories
 backups/
+
+# Always ignore sensitive files
+*.pem
+*.crt
+*.key
+*.csr
+
+# Always ignore logs and temp files
+*.log
+*.tmp
+*.temp
 *.backup
 *.bak
 
-# Environment files
-.env
-.env.*
-!.env.example
-
-# Temporary files
-*.tmp
-*.temp
-*.log
-
-# OS generated files
+# Always ignore OS files
 .DS_Store
 .DS_Store?
 ._*
@@ -22,22 +38,9 @@ backups/
 ehthumbs.db
 Thumbs.db
 
-# Editor files
+# Always ignore editor files
 *.swp
 *.swo
 *~
 .vscode/
 .idea/
-
-# SSL certificates (never commit these!)
-*.pem
-*.crt
-*.key
-*.csr
-
-# Configuration files with sensitive data
-*.conf.local
-config.local.*
-
-# Test files
-test_*
