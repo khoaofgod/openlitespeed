@@ -28,6 +28,7 @@ CERTBOT_PATH="/usr/bin/certbot"
 
 # Global variables
 DOMAIN=""
+ALIAS_DOMAINS=""
 USERID=""
 ADMIN_EMAIL=""
 DOC_ROOT=""
@@ -337,10 +338,6 @@ select_domain() {
         echo
         ping_domain "$DOMAIN"
         
-        # Ping www subdomain
-        echo
-        ping_domain "www.$DOMAIN"
-        
         # Check if vhost exists
         if check_vhost_exists "$DOMAIN"; then
             echo
@@ -370,6 +367,39 @@ select_domain() {
             break
         fi
     done
+}
+
+# Function to get alias domains
+get_alias_domains() {
+    echo
+    local default_alias="www.$DOMAIN"
+    read -p "Enter Alias Domains (default: $default_alias): " ALIAS_DOMAINS
+    ALIAS_DOMAINS=${ALIAS_DOMAINS:-"$default_alias"}
+    
+    # Validate each alias domain
+    local valid_aliases=""
+    for alias in $ALIAS_DOMAINS; do
+        if [[ "$alias" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            valid_aliases="$valid_aliases $alias"
+        else
+            print_warning "Invalid alias domain format: $alias (skipping)"
+        fi
+    done
+    
+    ALIAS_DOMAINS=$(echo "$valid_aliases" | xargs)
+    
+    if [[ -n "$ALIAS_DOMAINS" ]]; then
+        print_info "Alias domains: $ALIAS_DOMAINS"
+        
+        # Ping all alias domains
+        echo
+        for alias in $ALIAS_DOMAINS; do
+            ping_domain "$alias"
+            echo
+        done
+    else
+        print_warning "No valid alias domains specified"
+    fi
 }
 
 # Function to get admin email
@@ -513,7 +543,7 @@ create_vhost_config() {
     cat > "$LSWS_VHOST_DIR/$DOMAIN/vhost.conf" << EOF
 docRoot                   $abs_doc_root
 vhDomain                  $DOMAIN
-vhAliases                 www.$DOMAIN
+vhAliases                 $ALIAS_DOMAINS
 adminEmails               $ADMIN_EMAIL
 enableGzip                1
 enableIpGeo               1
@@ -584,7 +614,7 @@ extprocessor ${USERID} {
 }
 
 context /.well-known/acme-challenge {
-  location                $abs_doc_root/.well-known/acme-challenge
+  location                /usr/local/lsws/Example/html/.well-known/acme-challenge
   allowBrowse             1
 
   rewrite  {
@@ -919,24 +949,31 @@ setup_ssl() {
     systemctl restart lsws
     sleep 3
     
-    # Create ACME challenge directory
-    local abs_doc_root="$DOC_ROOT"
-    if [[ "$DOC_ROOT" == *"\$VH_ROOT"* ]]; then
-        abs_doc_root="${DOC_ROOT/\$VH_ROOT/$VH_ROOT}"
-    fi
-    
-    mkdir -p "$abs_doc_root/.well-known/acme-challenge"
-    chown -R "$USERID:$USERID" "$abs_doc_root/.well-known"
+    # Ensure shared ACME challenge directory exists
+    local acme_challenge_dir="/usr/local/lsws/Example/html/.well-known/acme-challenge"
+    mkdir -p "$acme_challenge_dir"
+    chown -R nobody:nogroup "$acme_challenge_dir"
+    chmod 755 "$acme_challenge_dir"
     
     # Create certificate
     print_step "Creating Let's Encrypt certificate..."
     
-    if $CERTBOT_PATH certonly --webroot \
-        -w "$abs_doc_root" \
-        -d "$DOMAIN" \
-        --email "$ADMIN_EMAIL" \
-        --agree-tos \
-        --non-interactive; then
+    # Build certbot command with all domains
+    local certbot_cmd="$CERTBOT_PATH certonly --webroot -w \"/usr/local/lsws/Example/html\" -d \"$DOMAIN\""
+    
+    # Add alias domains to certificate
+    if [[ -n "$ALIAS_DOMAINS" ]]; then
+        for alias in $ALIAS_DOMAINS; do
+            certbot_cmd="$certbot_cmd -d \"$alias\""
+        done
+        print_info "Creating certificate for: $DOMAIN $ALIAS_DOMAINS"
+    else
+        print_info "Creating certificate for: $DOMAIN"
+    fi
+    
+    certbot_cmd="$certbot_cmd --email \"$ADMIN_EMAIL\" --agree-tos --non-interactive"
+    
+    if eval "$certbot_cmd"; then
         
         print_success "SSL certificate created successfully!"
         
@@ -979,7 +1016,13 @@ setup_ssl() {
         print_info "  • Let's Encrypt rate limits reached"
         print_info ""
         print_info "You can retry manually with:"
-        echo "  certbot certonly --webroot -w $abs_doc_root -d $DOMAIN"
+        local retry_cmd="certbot certonly --webroot -w /usr/local/lsws/Example/html -d $DOMAIN"
+        if [[ -n "$ALIAS_DOMAINS" ]]; then
+            for alias in $ALIAS_DOMAINS; do
+                retry_cmd="$retry_cmd -d $alias"
+            done
+        fi
+        echo "  $retry_cmd"
         
         # Remove SSL configuration since cert creation failed
         sed -i '/^vhssl/,/^}/d' "$LSWS_VHOST_DIR/$DOMAIN/vhost.conf"
@@ -1074,6 +1117,7 @@ show_summary() {
     echo "Configuration Summary:"
     echo "┌─────────────────────────────────────────────────────────────┐"
     echo "│ Domain:            $DOMAIN"
+    echo "│ Alias Domains:     $ALIAS_DOMAINS"
     echo "│ User:              $USERID"
     echo "│ Virtual Host Root: $VH_ROOT"
     echo "│ Document Root:     $DOC_ROOT"
@@ -1110,7 +1154,13 @@ show_summary() {
     echo "  2. Test your website: http://$DOMAIN"
     if [[ $SSL_ENABLED =~ ^[Yy]$ ]] && [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
         echo "  3. To retry SSL later, run:"
-        echo "     certbot certonly --webroot -w $VH_ROOT/app/public -d $DOMAIN"
+        local summary_retry_cmd="certbot certonly --webroot -w /usr/local/lsws/Example/html -d $DOMAIN"
+        if [[ -n "$ALIAS_DOMAINS" ]]; then
+            for alias in $ALIAS_DOMAINS; do
+                summary_retry_cmd="$summary_retry_cmd -d $alias"
+            done
+        fi
+        echo "     $summary_retry_cmd"
     fi
     echo
     echo "Useful Commands:"
@@ -1132,6 +1182,7 @@ main() {
     # Get user input
     select_user
     select_domain
+    get_alias_domains
     get_admin_email
     setup_directories
     ask_ssl
@@ -1146,6 +1197,7 @@ main() {
     echo
     echo "  User ID:           $USERID"
     echo "  Domain:            $DOMAIN"
+    echo "  Alias Domains:     $ALIAS_DOMAINS"
     echo "  Admin Email:       $ADMIN_EMAIL"
     echo "  Document Root:     $DOC_ROOT"
     echo "  VHost Root:        $VH_ROOT"
@@ -1173,6 +1225,11 @@ main() {
     
     # Add to HTTP listeners
     add_to_listeners "80" "HTTP"
+    
+    # Restart OpenLiteSpeed to activate HTTP vhost
+    print_step "Restarting OpenLiteSpeed to activate HTTP vhost..."
+    systemctl restart lsws
+    sleep 3
     
     # Setup SSL if enabled
     if [[ $SSL_ENABLED =~ ^[Yy]$ ]]; then
