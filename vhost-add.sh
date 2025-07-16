@@ -1007,18 +1007,71 @@ setup_ssl() {
     chown -R nobody:nogroup "$acme_challenge_dir"
     chmod 755 "$acme_challenge_dir"
     
+    # Test ACME challenge accessibility for all domains
+    print_step "Testing ACME challenge accessibility for all domains..."
+    local test_file="acme-test-$(date +%s)"
+    echo "test-challenge-file" > "$acme_challenge_dir/$test_file"
+    
+    # Test main domain
+    if ! curl -sS --connect-timeout 5 "http://$DOMAIN/.well-known/acme-challenge/$test_file" > /dev/null 2>&1; then
+        print_error "ACME challenge not accessible for $DOMAIN"
+        rm -f "$acme_challenge_dir/$test_file"
+        return 1
+    fi
+    print_info "✓ ACME challenge accessible for $DOMAIN"
+    
+    # Test alias domains
+    local failed_domains=""
+    if [[ -n "$ALIAS_DOMAINS" ]]; then
+        for alias in $ALIAS_DOMAINS; do
+            if ! curl -sS --connect-timeout 5 "http://$alias/.well-known/acme-challenge/$test_file" > /dev/null 2>&1; then
+                print_warning "ACME challenge not accessible for $alias"
+                failed_domains="$failed_domains $alias"
+            else
+                print_info "✓ ACME challenge accessible for $alias"
+            fi
+        done
+    fi
+    
+    # Clean up test file
+    rm -f "$acme_challenge_dir/$test_file"
+    
+    # If some domains failed, only create certificate for accessible domains
+    if [[ -n "$failed_domains" ]]; then
+        print_warning "Some domains failed ACME challenge test. Creating certificate only for accessible domains."
+        local accessible_domains="$DOMAIN"
+        if [[ -n "$ALIAS_DOMAINS" ]]; then
+            for alias in $ALIAS_DOMAINS; do
+                if [[ ! "$failed_domains" =~ $alias ]]; then
+                    accessible_domains="$accessible_domains $alias"
+                fi
+            done
+        fi
+        print_info "Certificate will be created for: $accessible_domains"
+    else
+        print_info "All domains passed ACME challenge test"
+    fi
+    
     # Create certificate
     print_step "Creating Let's Encrypt certificate..."
     
-    # Build certbot command with all domains
+    # Build certbot command with accessible domains only
     local certbot_cmd="$CERTBOT_PATH certonly --webroot -w \"/usr/local/lsws/Example/html\" -d \"$DOMAIN\""
     
-    # Add alias domains to certificate
+    # Add accessible alias domains to certificate
     if [[ -n "$ALIAS_DOMAINS" ]]; then
         for alias in $ALIAS_DOMAINS; do
-            certbot_cmd="$certbot_cmd -d \"$alias\""
+            # Only add domains that didn't fail ACME challenge test
+            if [[ -z "$failed_domains" || ! "$failed_domains" =~ $alias ]]; then
+                certbot_cmd="$certbot_cmd -d \"$alias\""
+            fi
         done
-        print_info "Creating certificate for: $DOMAIN $ALIAS_DOMAINS"
+        
+        if [[ -n "$failed_domains" ]]; then
+            print_info "Creating certificate for accessible domains: $accessible_domains"
+        else
+            print_info "Creating certificate for: $DOMAIN $ALIAS_DOMAINS"
+        fi
     else
         print_info "Creating certificate for: $DOMAIN"
     fi
@@ -1028,6 +1081,15 @@ setup_ssl() {
     if eval "$certbot_cmd"; then
         
         print_success "SSL certificate created successfully!"
+        
+        # Show warning if some domains were skipped
+        if [[ -n "$failed_domains" ]]; then
+            print_warning "Note: The following domains were skipped due to ACME challenge issues:"
+            for domain in $failed_domains; do
+                print_warning "  • $domain (not accessible via HTTP)"
+            done
+            print_info "To include these domains later, ensure they are properly configured in DNS and HTTP listeners."
+        fi
         
         # Auto-fix SSL listener configuration
         print_step "🔧 Auto-configuring SSL listener..."
