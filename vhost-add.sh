@@ -614,18 +614,31 @@ extprocessor ${USERID} {
 }
 
 context /.well-known/acme-challenge {
-  location                /usr/local/lsws/Example/html/.well-known/acme-challenge
+  location                $abs_doc_root/.well-known/acme-challenge
   allowBrowse             1
+  extraHeaders            <<<END_extraHeaders
+X-Forwarded-Host $SERVER_NAME
+END_extraHeaders
 
   rewrite  {
     enable                0
   }
   addDefaultCharset       off
+  
+  accessControl  {
+    allow                 *
+  }
 }
 
 rewrite  {
   enable                  1
   autoLoadHtaccess        1
+  
+  rules                   <<<END_rules
+# Ensure ACME challenge works for all domains
+RewriteCond %{REQUEST_URI} ^/\.well-known/acme-challenge/
+RewriteRule ^(.*)$ - [L]
+END_rules
 }
 
 module cache {
@@ -1047,17 +1060,28 @@ setup_ssl() {
     chown -R nobody:nogroup "$acme_challenge_dir"
     chmod 755 "$acme_challenge_dir"
     
+    # Get absolute document root path
+    local abs_doc_root="$DOC_ROOT"
+    if [[ "$DOC_ROOT" == *"\$VH_ROOT"* ]]; then
+        abs_doc_root="${DOC_ROOT/\$VH_ROOT/$VH_ROOT}"
+    fi
+    
+    # Create .well-known/acme-challenge directory in document root 
+    mkdir -p "$abs_doc_root/.well-known/acme-challenge"
+    chown -R "$USERID:$USERID" "$abs_doc_root/.well-known"
+    chmod -R 755 "$abs_doc_root/.well-known"
+    
     # Test ACME challenge accessibility for all domains
     print_step "Testing ACME challenge accessibility for all domains..."
     local test_file="acme-test-$(date +%s)"
-    echo "test-challenge-file-content" > "$acme_challenge_dir/$test_file"
+    echo "test-challenge-file-content" > "$abs_doc_root/.well-known/acme-challenge/$test_file"
     
     # Test main domain
     local main_test_result=$(curl -sS --connect-timeout 5 "http://$DOMAIN/.well-known/acme-challenge/$test_file" 2>/dev/null)
     if [[ "$main_test_result" != "test-challenge-file-content" ]]; then
         print_error "ACME challenge not accessible for $DOMAIN"
         print_error "Expected: test-challenge-file-content, Got: $main_test_result"
-        rm -f "$acme_challenge_dir/$test_file"
+        rm -f "$abs_doc_root/.well-known/acme-challenge/$test_file"
         return 1
     fi
     print_info "✓ ACME challenge accessible for $DOMAIN"
@@ -1078,7 +1102,7 @@ setup_ssl() {
     fi
     
     # Clean up test file
-    rm -f "$acme_challenge_dir/$test_file"
+    rm -f "$abs_doc_root/.well-known/acme-challenge/$test_file"
     
     # If some domains failed, only create certificate for accessible domains
     if [[ -n "$failed_domains" ]]; then
@@ -1100,7 +1124,7 @@ setup_ssl() {
     print_step "Creating Let's Encrypt certificate..."
     
     # Build certbot command with accessible domains only
-    local certbot_cmd="$CERTBOT_PATH certonly --webroot -w \"/usr/local/lsws/Example/html\" -d \"$DOMAIN\""
+    local certbot_cmd="$CERTBOT_PATH certonly --webroot -w \"$abs_doc_root\" -d \"$DOMAIN\""
     
     # Add accessible alias domains to certificate
     if [[ -n "$ALIAS_DOMAINS" ]]; then
@@ -1174,7 +1198,7 @@ setup_ssl() {
         print_info "  • Let's Encrypt rate limits reached"
         print_info ""
         print_info "You can retry manually with:"
-        local retry_cmd="certbot certonly --webroot -w /usr/local/lsws/Example/html -d $DOMAIN"
+        local retry_cmd="certbot certonly --webroot -w $abs_doc_root -d $DOMAIN"
         if [[ -n "$ALIAS_DOMAINS" ]]; then
             for alias in $ALIAS_DOMAINS; do
                 retry_cmd="$retry_cmd -d $alias"
@@ -1312,7 +1336,12 @@ show_summary() {
     echo "  2. Test your website: http://$DOMAIN"
     if [[ $SSL_ENABLED =~ ^[Yy]$ ]] && [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
         echo "  3. To retry SSL later, run:"
-        local summary_retry_cmd="certbot certonly --webroot -w /usr/local/lsws/Example/html -d $DOMAIN"
+        # Get absolute document root for retry command
+        local abs_doc_root_retry="$DOC_ROOT"
+        if [[ "$DOC_ROOT" == *"\$VH_ROOT"* ]]; then
+            abs_doc_root_retry="${DOC_ROOT/\$VH_ROOT/$VH_ROOT}"
+        fi
+        local summary_retry_cmd="certbot certonly --webroot -w $abs_doc_root_retry -d $DOMAIN"
         if [[ -n "$ALIAS_DOMAINS" ]]; then
             for alias in $ALIAS_DOMAINS; do
                 summary_retry_cmd="$summary_retry_cmd -d $alias"
