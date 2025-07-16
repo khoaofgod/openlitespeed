@@ -698,18 +698,34 @@ add_to_listeners() {
     cp "$LSWS_CONF" "$temp_file"
     
     for listener in "${found_listeners[@]}"; do
-        # Check if domain is already mapped to this listener
+        # Check if main domain is already mapped to this listener
         if grep -q "map.*$DOMAIN" "$temp_file" && grep -B 10 "map.*$DOMAIN" "$temp_file" | grep -q "listener $listener"; then
-            print_info "Domain already mapped to $listener listener"
-            continue
+            print_info "Main domain already mapped to $listener listener"
+        else
+            # Add main domain mapping to this listener
+            sed -i "/^listener $listener {/,/^}/ { /secure.*[01]/a\\  map                     $DOMAIN $DOMAIN
+            }" "$temp_file"
+            
+            print_info "✓ Added $DOMAIN to $listener listener"
+            ((added_count++))
         fi
         
-        # Add mapping to this listener
-        sed -i "/^listener $listener {/,/^}/ { /secure.*[01]/a\\  map                     $DOMAIN $DOMAIN
-        }" "$temp_file"
-        
-        print_info "✓ Added $DOMAIN to $listener listener"
-        ((added_count++))
+        # Add alias domains to this listener
+        if [[ -n "$ALIAS_DOMAINS" ]]; then
+            for alias in $ALIAS_DOMAINS; do
+                # Check if alias is already mapped
+                if grep -q "map.*$alias" "$temp_file" && grep -B 10 "map.*$alias" "$temp_file" | grep -q "listener $listener"; then
+                    print_info "Alias domain $alias already mapped to $listener listener"
+                else
+                    # Add alias domain mapping to this listener (all alias domains point to main domain vhost)
+                    sed -i "/^listener $listener {/,/^}/ { /map.*$DOMAIN $DOMAIN/a\\  map                     $alias $DOMAIN
+                    }" "$temp_file"
+                    
+                    print_info "✓ Added $alias to $listener listener"
+                    ((added_count++))
+                fi
+            done
+        fi
     done
     
     # Apply changes
@@ -919,6 +935,37 @@ troubleshoot_ssl() {
     fi
 }
 
+# Function to check if certificate includes all required domains
+check_certificate_domains() {
+    local domain="$1"
+    local cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+    
+    if [[ ! -f "$cert_path" ]]; then
+        return 1
+    fi
+    
+    # Get all domains from certificate
+    local cert_domains=$(openssl x509 -in "$cert_path" -noout -text | grep -A 1 "Subject Alternative Name" | grep -oE "DNS:[^,]*" | sed 's/DNS://g')
+    
+    # Check if main domain is in certificate
+    if ! echo "$cert_domains" | grep -q "^$domain$"; then
+        return 1
+    fi
+    
+    # Check if all alias domains are in certificate
+    if [[ -n "$ALIAS_DOMAINS" ]]; then
+        for alias in $ALIAS_DOMAINS; do
+            if ! echo "$cert_domains" | grep -q "^$alias$"; then
+                print_warning "Certificate missing alias domain: $alias"
+                return 1
+            fi
+        done
+    fi
+    
+    print_info "Certificate includes all required domains"
+    return 0
+}
+
 # Function to setup SSL with auto-troubleshooting
 setup_ssl() {
     if [[ ! $SSL_ENABLED =~ ^[Yy]$ ]]; then
@@ -930,17 +977,22 @@ setup_ssl() {
     # Add to HTTPS listeners first
     add_to_listeners "443" "HTTPS"
     
-    # Check if certificates already exist
+    # Check if certificates already exist and include all domains
     if [[ -f "/etc/letsencrypt/live/$DOMAIN/privkey.pem" ]]; then
         print_info "Existing SSL certificates found for $DOMAIN"
         
-        # Run SSL troubleshooting to ensure everything is working
-        if troubleshoot_ssl "$DOMAIN"; then
-            print_success "✅ SSL is already working correctly!"
-            setup_ssl_renewal
-            return 0
+        # Check if certificate includes all required domains
+        if check_certificate_domains "$DOMAIN"; then
+            # Run SSL troubleshooting to ensure everything is working
+            if troubleshoot_ssl "$DOMAIN"; then
+                print_success "✅ SSL is already working correctly!"
+                setup_ssl_renewal
+                return 0
+            else
+                print_warning "SSL certificates exist but not working properly, will recreate..."
+            fi
         else
-            print_warning "SSL certificates exist but not working properly, will recreate..."
+            print_warning "SSL certificate does not include all alias domains, will recreate..."
         fi
     fi
     
